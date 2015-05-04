@@ -1,0 +1,20 @@
+I started by running on cuda1 and playing around with the workgroup size, varying it between 4x4 to 32x32. I tried a variety of sizes in between and noticed a general improvement in performance as the size of the workgroup increased. The best performing choices were 16x16 and 32x32, with 32's performing the best with around 110 GFlops/s and the 16's with around 106 GFlops/s, a slight but consistent difference. Both 20x20 and 24x24 workgroup sizes performed around 90 GFlops/s, 8x8 got around 70 GFlops/s, and 4x4 was the worst I tried with about 18 GFlops/s. These runs used the NVIDIA GeForce Titan Black GPU.
+
+To give more specific performance, I ran it with 32x32 workgroup size and got the following figures:
+
+2296.164373 MPixels/s
+18.369315 GBit/s
+111.386639 GFlop/s
+
+On my desktop I got significantly poorer performance, as expected, even with 32x32:
+
+72.001917 MPixels/s
+0.576015 GBit/s
+3.492804 GFlop/s
+
+
+To achieve the iterative blurring operator I reused the same convolution kernel however I created another instance of it which took the identity filter instead of the 45 degree filter as its argument. I also changed the buffers buf_gray and buf_congray to both have READ and WRITE access. Thus the first kernel would apply the 45 degree filter to buf_gray and copy that to buf_congray. Then the second filter would use the identity filter to simply copy buf_congray back to buf_gray and then repeat. Thus iterative blurring could be achieved. I include images with 1, 10, 100, 1000, 5000, and 10000 blurring iterations applied. There is no discernible difference between the images with 5000 and 10000 blur applications.
+
+You'll notice that there are boundary effects but these come from the fact that the boundary on the picture is not a uniform pixel color. Since in the original image there are variations in the pixels around the boundary, and these pixels aren't changed by the filter since the boundary is protected, these differences will be noticeable even after the filter is applied multiple times. If there was no variation and all the boundary was the same tone, then would force the whole image to eventually blur to the same color as well.
+
+
