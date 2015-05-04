@@ -14,8 +14,8 @@
 #define HALF_FILTER_WIDTH 3
 
 // local size of work group
-#define WGX 16
-#define WGY 16
+#define WGX 32
+#define WGY 32
 
 
 void print_kernel_info(cl_command_queue queue, cl_kernel knl)
@@ -66,15 +66,15 @@ int main(int argc, char *argv[])
   float *gray, *congray, *congray_cl;
 
   // identity kernel
-  // float filter[] = {
-  //   0,0,0,0,0,0,0,
-  //   0,0,0,0,0,0,0,
-  //   0,0,0,0,0,0,0,
-  //   0,0,0,1,0,0,0,
-  //   0,0,0,0,0,0,0,
-  //   0,0,0,0,0,0,0,
-  //   0,0,0,0,0,0,0,
-  // };
+   float identity[] = {
+     0,0,0,0,0,0,0,
+     0,0,0,0,0,0,0,
+     0,0,0,0,0,0,0,
+     0,0,0,1,0,0,0,
+     0,0,0,0,0,0,0,
+     0,0,0,0,0,0,0,
+     0,0,0,0,0,0,0,
+   };
 
   // 45 degree motion blur
   float filter[] =
@@ -174,6 +174,9 @@ int main(int argc, char *argv[])
   char *knl_text = read_file("convolution.cl");
   cl_kernel knl = kernel_from_string(ctx, knl_text, "convolution", NULL);
   free(knl_text);
+  char *knl_text_copy = read_file("convolution.cl");
+  cl_kernel knl_copy = kernel_from_string(ctx, knl_text_copy, "convolution", NULL);
+  free(knl_text_copy);
 
 #ifdef NON_OPTIMIZED
   int deviceWidth = xsize;
@@ -187,15 +190,19 @@ int main(int argc, char *argv[])
   // allocate device memory
   // --------------------------------------------------------------------------
   cl_int status;
-  cl_mem buf_gray = clCreateBuffer(ctx, CL_MEM_READ_ONLY,
+  cl_mem buf_gray = clCreateBuffer(ctx, CL_MEM_READ_WRITE,
      deviceDataSize, 0, &status);
   CHECK_CL_ERROR(status, "clCreateBuffer");
 
-  cl_mem buf_congray = clCreateBuffer(ctx, CL_MEM_WRITE_ONLY,
+  cl_mem buf_congray = clCreateBuffer(ctx, CL_MEM_READ_WRITE,
       deviceDataSize, 0, &status);
   CHECK_CL_ERROR(status, "clCreateBuffer");
 
   cl_mem buf_filter = clCreateBuffer(ctx, CL_MEM_READ_ONLY,
+     FILTER_WIDTH*FILTER_WIDTH*sizeof(float), 0, &status);
+  CHECK_CL_ERROR(status, "clCreateBuffer");
+
+  cl_mem buf_identity = clCreateBuffer(ctx, CL_MEM_READ_ONLY,
      FILTER_WIDTH*FILTER_WIDTH*sizeof(float), 0, &status);
   CHECK_CL_ERROR(status, "clCreateBuffer");
 
@@ -219,6 +226,10 @@ int main(int argc, char *argv[])
   CALL_CL_SAFE(clEnqueueWriteBuffer(
         queue, buf_filter, /*blocking*/ CL_TRUE, /*offset*/ 0,
         FILTER_WIDTH*FILTER_WIDTH*sizeof(float), filter, 0, NULL, NULL));
+
+  CALL_CL_SAFE(clEnqueueWriteBuffer(
+        queue, buf_identity, /*blocking*/ CL_TRUE, /*offset*/ 0,
+        FILTER_WIDTH*FILTER_WIDTH*sizeof(float), identity, 0, NULL, NULL));
 
   // --------------------------------------------------------------------------
   // run code on device
@@ -249,6 +260,16 @@ int main(int argc, char *argv[])
   CALL_CL_SAFE(clSetKernelArg(knl, 7, sizeof(localHeight), &localHeight));
   CALL_CL_SAFE(clSetKernelArg(knl, 8, sizeof(localWidth), &localWidth));
 
+  CALL_CL_SAFE(clSetKernelArg(knl_copy, 0, sizeof(buf_congray), &buf_congray));
+  CALL_CL_SAFE(clSetKernelArg(knl_copy, 1, sizeof(buf_gray), &buf_gray));
+  CALL_CL_SAFE(clSetKernelArg(knl_copy, 2, sizeof(buf_identity), &buf_identity));
+  CALL_CL_SAFE(clSetKernelArg(knl_copy, 3, sizeof(rows), &rows));
+  CALL_CL_SAFE(clSetKernelArg(knl_copy, 4, sizeof(cols), &cols));
+  CALL_CL_SAFE(clSetKernelArg(knl_copy, 5, sizeof(filterWidth), &filterWidth));
+  CALL_CL_SAFE(clSetKernelArg(knl_copy, 6, localMemSize, NULL));
+  CALL_CL_SAFE(clSetKernelArg(knl_copy, 7, sizeof(localHeight), &localHeight));
+  CALL_CL_SAFE(clSetKernelArg(knl_copy, 8, sizeof(localWidth), &localWidth));
+
   // --------------------------------------------------------------------------
   // print kernel info
   // --------------------------------------------------------------------------
@@ -261,11 +282,14 @@ int main(int argc, char *argv[])
   {
     CALL_CL_SAFE(clEnqueueNDRangeKernel(queue, knl, 2, NULL,
           global_size, local_size, 0, NULL, NULL));
+    CALL_CL_SAFE(clFinish(queue));
+    CALL_CL_SAFE(clEnqueueNDRangeKernel(queue, knl_copy, 2, NULL,
+          global_size, local_size, 0, NULL, NULL));
   }
   CALL_CL_SAFE(clFinish(queue));
   get_timestamp(&toc);
 
-  double elapsed = timestamp_diff_in_seconds(tic,toc)/num_loops;
+  double elapsed = timestamp_diff_in_seconds(tic,toc)/num_loops/2;
   printf("%f s\n", elapsed);
   printf("%f MPixels/s\n", xsize*ysize/1e6/elapsed);
   printf("%f GBit/s\n", 2*xsize*ysize*sizeof(float)/1e9/elapsed);

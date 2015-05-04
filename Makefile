@@ -8,7 +8,7 @@ LDFLAGS += $(foreach librarydir,$(subst :, ,$(LD_LIBRARY_PATH)),-L$(librarydir))
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
   LDFLAGS += -lrt -lOpenCL -lm
-  CFLAGS += -Wall -std=gnu99 -g -O2
+  CFLAGS += -std=gnu99 -g -O2
 endif
 ifeq ($(UNAME_S),Darwin)
   LDFLAGS +=  -framework OpenCL -lm
